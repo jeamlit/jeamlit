@@ -127,7 +127,7 @@ public final class Server implements StateManager.RenderServer {
   private final boolean standaloneMode;
   private final @Nullable String originalUrl;
   private final @Nullable String basePath;
-  private final Duration sessionMaxAge;
+  private final Duration disconnectedSessionTTL;
   private boolean ready;
 
   private Undertow server;
@@ -164,8 +164,8 @@ public final class Server implements StateManager.RenderServer {
       return new AppSession(newChannel, xsrf, executor, undeliveredMessages, null);
     }
 
-    private boolean isExpired(final Duration maxAge) {
-      return disconnectTime != null && disconnectTime.isBefore(Instant.now().minus(maxAge));
+    private boolean isExpired(final Duration ttl) {
+      return disconnectTime != null && disconnectTime.isBefore(Instant.now().minus(ttl));
     }
 
     private boolean overflowed() {
@@ -202,7 +202,7 @@ public final class Server implements StateManager.RenderServer {
     @Nullable String classpath;
     @Nullable String headersFile;
     @Nullable BuildSystem buildSystem;
-    private Duration sessionMaxAge = Duration.ofMinutes(10);
+    private Duration disconnectedSessionTTL = Duration.ofMinutes(10);
     private @Nullable String originalUrl;
     // basePath where javelit is served - useful when a javelit app is proxied
     // this is not necessary if the proxy sets the X-Forwarded-Prefix header properly
@@ -256,11 +256,11 @@ public final class Server implements StateManager.RenderServer {
       return this;
     }
 
-    // How long a disconnected session is kept around before it is evicted and its state cleared.
-    public Builder sessionMaxAge(final @Nonnull Duration sessionMaxAge) {
-      checkArgument(!sessionMaxAge.isNegative() && !sessionMaxAge.isZero(),
-                    "sessionMaxAge must be strictly positive. Got: %s", sessionMaxAge);
-      this.sessionMaxAge = sessionMaxAge;
+    // TTL for sessions whose websocket has been disconnected. After this delay, session state is cleared.
+    public Builder disconnectedSessionTTL(final @Nonnull Duration disconnectedSessionTTL) {
+      checkArgument(!disconnectedSessionTTL.isNegative() && !disconnectedSessionTTL.isZero(),
+                    "disconnectedSessionTTL must be strictly positive. Got: %s", disconnectedSessionTTL);
+      this.disconnectedSessionTTL = disconnectedSessionTTL;
       return this;
     }
 
@@ -310,7 +310,7 @@ public final class Server implements StateManager.RenderServer {
     this.ready = false;
     this.originalUrl = builder.originalUrl;
     this.basePath = builder.basePath == null ? null : cleanBasePath(builder.basePath);
-    this.sessionMaxAge = builder.sessionMaxAge;
+    this.disconnectedSessionTTL = builder.disconnectedSessionTTL;
 
     sessionsCleaner.scheduleAtFixedRate(() -> {
       try {
@@ -318,7 +318,7 @@ public final class Server implements StateManager.RenderServer {
         while (it.hasNext()) {
           final Map.Entry<String, AppSession> entry = it.next();
           final AppSession session = entry.getValue();
-          if (session.isExpired(sessionMaxAge)) {
+          if (session.isExpired(disconnectedSessionTTL)) {
             it.remove();
             final String sessionId = entry.getKey();
             try {

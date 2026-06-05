@@ -106,10 +106,10 @@ public class Cli implements Callable<Integer> {
     private String basePath;
 
     @SuppressWarnings("unused")
-    @Option(names = {"--session-max-age-minutes"},
-        description = "How long (in minutes) a disconnected session is kept around before it is evicted and its state cleared. Default: 10.",
-        defaultValue = "10")
-    private int sessionMaxAgeMinutes;
+    @Option(names = {"--disconnected-session-ttl"},
+        description = "TTL in seconds for sessions whose websocket has been disconnected. After this delay, the session state is cleared. Default: 600.",
+        defaultValue = "600")
+    private int disconnectedSessionTTL;
 
     @Override
     public Integer call() throws Exception {
@@ -153,7 +153,7 @@ public class Cli implements Callable<Integer> {
       if (basePath != null) {
         builder.basePath(basePath);
       }
-      builder.sessionMaxAge(java.time.Duration.ofMinutes(sessionMaxAgeMinutes));
+      builder.disconnectedSessionTTL(java.time.Duration.ofSeconds(disconnectedSessionTTL));
 
       final Server server = builder.build();
 
@@ -192,8 +192,8 @@ public class Cli implements Callable<Integer> {
         LOG.error("File {} does not look like a java file. File should end with .java", appPath);
         parametersAreValid = false;
       }
-      if (sessionMaxAgeMinutes <= 0) {
-        LOG.error("--session-max-age-minutes must be strictly positive. Got: {}", sessionMaxAgeMinutes);
+      if (disconnectedSessionTTL <= 0) {
+        LOG.error("--disconnected-session-ttl must be strictly positive. Got: {}", disconnectedSessionTTL);
         parametersAreValid = false;
       }
       // perform other parameter checks here
