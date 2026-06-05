@@ -105,6 +105,12 @@ public class Cli implements Callable<Integer> {
             """)
     private String basePath;
 
+    @SuppressWarnings("unused")
+    @Option(names = {"--session-max-age-minutes"},
+        description = "How long (in minutes) a disconnected session is kept around before it is evicted and its state cleared. Default: 10.",
+        defaultValue = "10")
+    private int sessionMaxAgeMinutes;
+
     @Override
     public Integer call() throws Exception {
       final Level logLevel = Level.valueOf(this.logLevel);
@@ -147,6 +153,7 @@ public class Cli implements Callable<Integer> {
       if (basePath != null) {
         builder.basePath(basePath);
       }
+      builder.sessionMaxAge(java.time.Duration.ofMinutes(sessionMaxAgeMinutes));
 
       final Server server = builder.build();
 
@@ -183,6 +190,10 @@ public class Cli implements Callable<Integer> {
       if (!isUrl && !appPath.endsWith(".java")) {
         // note: I know a Java file could in theory not end with .java but I want to reduce other issues downstream
         LOG.error("File {} does not look like a java file. File should end with .java", appPath);
+        parametersAreValid = false;
+      }
+      if (sessionMaxAgeMinutes <= 0) {
+        LOG.error("--session-max-age-minutes must be strictly positive. Got: {}", sessionMaxAgeMinutes);
         parametersAreValid = false;
       }
       // perform other parameter checks here

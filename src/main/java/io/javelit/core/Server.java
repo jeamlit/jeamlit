@@ -127,6 +127,7 @@ public final class Server implements StateManager.RenderServer {
   private final boolean standaloneMode;
   private final @Nullable String originalUrl;
   private final @Nullable String basePath;
+  private final Duration sessionMaxAge;
   private boolean ready;
 
   private Undertow server;
@@ -163,9 +164,8 @@ public final class Server implements StateManager.RenderServer {
       return new AppSession(newChannel, xsrf, executor, undeliveredMessages, null);
     }
 
-    private boolean isExpired() {
-      // TODO make this time limit configurable
-      return disconnectTime != null && disconnectTime.isBefore(Instant.now().minus(Duration.ofMinutes(10)));
+    private boolean isExpired(final Duration maxAge) {
+      return disconnectTime != null && disconnectTime.isBefore(Instant.now().minus(maxAge));
     }
 
     private boolean overflowed() {
@@ -202,6 +202,7 @@ public final class Server implements StateManager.RenderServer {
     @Nullable String classpath;
     @Nullable String headersFile;
     @Nullable BuildSystem buildSystem;
+    private Duration sessionMaxAge = Duration.ofMinutes(10);
     private @Nullable String originalUrl;
     // basePath where javelit is served - useful when a javelit app is proxied
     // this is not necessary if the proxy sets the X-Forwarded-Prefix header properly
@@ -255,6 +256,14 @@ public final class Server implements StateManager.RenderServer {
       return this;
     }
 
+    // How long a disconnected session is kept around before it is evicted and its state cleared.
+    public Builder sessionMaxAge(final @Nonnull Duration sessionMaxAge) {
+      checkArgument(!sessionMaxAge.isNegative() && !sessionMaxAge.isZero(),
+                    "sessionMaxAge must be strictly positive. Got: %s", sessionMaxAge);
+      this.sessionMaxAge = sessionMaxAge;
+      return this;
+    }
+
     public Builder host(final @Nonnull String host) {
       this.host = host;
       return this;
@@ -301,6 +310,7 @@ public final class Server implements StateManager.RenderServer {
     this.ready = false;
     this.originalUrl = builder.originalUrl;
     this.basePath = builder.basePath == null ? null : cleanBasePath(builder.basePath);
+    this.sessionMaxAge = builder.sessionMaxAge;
 
     sessionsCleaner.scheduleAtFixedRate(() -> {
       try {
@@ -308,7 +318,7 @@ public final class Server implements StateManager.RenderServer {
         while (it.hasNext()) {
           final Map.Entry<String, AppSession> entry = it.next();
           final AppSession session = entry.getValue();
-          if (session.isExpired()) {
+          if (session.isExpired(sessionMaxAge)) {
             it.remove();
             final String sessionId = entry.getKey();
             try {
